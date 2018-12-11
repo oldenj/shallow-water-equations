@@ -1,0 +1,96 @@
+module SWE_DimensionalSplittingCharm {
+	include "types/BlockConnectInterface.hh";
+	include "types/Boundary.hh";
+	include "scenarios/SWE_Scenario.hh";
+	include "tools/Float2DNative.hh";
+
+	message copyLayer {
+		Boundary boundary;
+		bool containsBathymetry;
+		float b[];
+		float h[];
+		float hu[];
+		float hv[];
+	};
+
+	array [1D] SWE_DimensionalSplittingCharm {
+		entry SWE_DimensionalSplittingCharm(int nx, int ny, float dy, float dx, float originX, float originY, int posX, int posY,
+							BoundaryType boundaries[4], std::string outputFilename, std::string bathymetryFile, std::string displacementFile);
+
+		entry void compute() {
+			while(currentCheckpoint < checkpointCount) {
+				while(currentSimulationTime < checkpointInstantOfTime[currentCheckpoint]) {
+					serial {
+						// Start the wall clock
+						clock_gettime(CLOCK_MONOTONIC, &startTime);
+						sendCopyLayers(true);
+						setGhostLayer();
+					}
+					overlap {
+						if(boundaryType[BND_LEFT] == CONNECT) {
+							when receiveGhostLeft(copyLayer *msg)
+								serial { processCopyLayer(msg); }
+						}
+						if(boundaryType[BND_RIGHT] == CONNECT) {
+							when receiveGhostRight(copyLayer *msg)
+								serial { processCopyLayer(msg); }
+						}
+						if(boundaryType[BND_BOTTOM] == CONNECT) {
+							when receiveGhostBottom(copyLayer *msg)
+								serial { processCopyLayer(msg); }
+						}
+						if(boundaryType[BND_TOP] == CONNECT) {
+							when receiveGhostTop(copyLayer *msg)
+								serial { processCopyLayer(msg); }
+						}
+					}
+					serial {
+						// The xSweep will trigger the reduction and accumulate compute time
+						computeNumericalFluxes();
+					}
+					when reductionTrigger()
+					serial {
+						// Complete iteration
+						updateUnknowns(maxTimestep);
+
+						// Accumulate wall time
+						clock_gettime(CLOCK_MONOTONIC, &endTime);
+						wallTime += (endTime.tv_sec - startTime.tv_sec);
+						wallTime += (float) (endTime.tv_nsec - startTime.tv_nsec) / 1E9;
+
+						// Once the simulation state progressed one iteration, increase the simulation time accordingly
+						currentSimulationTime += maxTimestep;
+					}
+				}
+				// After while loop, before for loop restarts
+				serial {
+					if(thisIndex == 0) {
+						CkPrintf("Write timestep (%fs)\n", currentSimulationTime);
+					}
+					writeTimestep();
+					currentCheckpoint++;
+				}
+			}
+			serial {
+				// Accumulate wall time
+				clock_gettime(CLOCK_MONOTONIC, &endTime);
+				wallTime += (endTime.tv_sec - startTime.tv_sec);
+				wallTime += (float) (endTime.tv_nsec - startTime.tv_nsec) / 1E9;
+
+				CkPrintf("Rank %i : Compute Time (CPU): %fs - (WALL): %fs | Total Time (Wall): %fs\n", thisIndex, computeTime, computeTimeWall, wallTime); 
+				mainProxy.done(thisIndex);
+			}
+		};
+
+		// SDAG entry methods
+		entry void receiveGhostLeft(copyLayer *msg);
+		entry void receiveGhostRight(copyLayer *msg);
+		entry void receiveGhostBottom(copyLayer *msg);
+		entry void receiveGhostTop(copyLayer *msg);
+
+		entry void reductionTrigger();
+
+		// entry methods
+		entry [reductiontarget] void reduceWaveSpeed(float maxWaveSpeed);
+	};
+};
