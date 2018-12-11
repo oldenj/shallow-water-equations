@@ -14,4 +14,4 @@ WIP
 License
 -------
 
-SWE is release unter GPLv3 (see [gpl.txt](gpl.txt))
+SWE is released under the GPLv3 (see [gpl.txt](gpl.txt))
