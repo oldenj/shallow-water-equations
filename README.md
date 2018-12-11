@@ -1,12 +1,15 @@
 SWE
 ===
 
-The Shallow Water Equations teaching code.
+Setup
+-----
+
+Execute *git submodule init* and *git submodule update* before compiling.
 
 Documentation
 -------------
 
-The documentation is available in the [Wiki](https://github.com/TUM-I5/SWE/wiki)
+WIP
 
 License
 -------
